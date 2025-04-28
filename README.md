@@ -21,31 +21,28 @@ Ikuti langkah-langkah berikut untuk menginstal dan menjalankan **Yuna.AI** di si
 ### 1. Clone Repository
 
 ```bash
-git clone https://github.com/username/bot-wa-yuna.git
+git clone https://github.com/KEN-AKIRA/Yuna.AI.git
 cd Yuna.Ai
-
+```
 
 ### 2. Install Dependency
 Pastikan kamu memiliki Node.js terpasang di sistemmu. Kemudian, jalankan perintah berikut untuk menginstal semua dependensi:
 
-bash
-Copy
-Edit
+```bash
 npm install
+```
 3. Setup .env
 Buat file .env di root direktori project dan masukkan GROQ_API_KEY kamu untuk autentikasi API.
 
-bash
-Copy
-Edit
+```bash
 GROQ_API_KEY=masukkan-api-key-anda
+```
 4. Jalankan Bot
 Setelah semua dependensi terinstal dan konfigurasi selesai, jalankan bot dengan perintah berikut:
 
-bash
-Copy
-Edit
+```bash
 npm start
+```
 5. Scan QR
 Bot akan memberikan QR code di terminal untuk login ke WhatsApp. Scan QR code tersebut menggunakan WhatsApp di smartphone kamu.
 
@@ -54,9 +51,6 @@ Bot siap digunakan! 🚀
 ⚙️ Struktur Proyek
 Berikut adalah struktur folder dari proyek ini:
 
-bash
-Copy
-Edit
 .
 ├── auth/               # Penyimpanan sesi login WhatsApp
 ├── avatars/            # Folder gambar ekspresi avatar
@@ -73,30 +67,24 @@ Edit
 📚 Langkah Instalasi Cepat
 Clone project:
 
-bash
-Copy
-Edit
-git clone https://github.com/username/bot-wa-yuna.git
+```bash
+git clone https://github.com/KEN-AKIRA/Yuna.AI.git
+```
 Masuk ke folder project:
 
-bash
-Copy
-Edit
+```bash
 cd Yuna.Ai
+```
 Install dependencies:
-
-bash
-Copy
-Edit
+```bash
 npm install
+```
 Buat file .env dan masukkan GROQ_API_KEY kamu.
 
 Jalankan bot:
-
-bash
-Copy
-Edit
+```bash
 node index.js
+```
 Scan QR code yang muncul di terminal dengan aplikasi WhatsApp.
 
 Bot siap digunakan! 🚀
