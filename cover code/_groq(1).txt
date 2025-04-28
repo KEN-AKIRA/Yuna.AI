@@ -1,0 +1,71 @@
+// groq.js
+import Groq from 'groq-sdk';
+import dotenv from 'dotenv';
+import fs from 'fs';
+dotenv.config();
+
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY
+});
+
+let userMemory = {};
+
+// Fungsi untuk mendapatkan respons AI dari Groq
+async function getGroqAIResponse(message, userId, language = 'id') {
+  try {
+    // Pastikan userMemory[userId] adalah array
+    if (!Array.isArray(userMemory[userId])) {
+      userMemory[userId] = [];  // Jika bukan array, buat array baru
+    }
+    
+    const memory = userMemory[userId];
+    memory.push({ role: "user", content: message });
+
+    // Mengirim permintaan ke Groq AI dengan menggunakan chat completions
+    const completion = await groq.chat.completions.create({
+      messages: [
+        { 
+          role: "system", 
+          content: `Kamu adalah asisten AI berna 'Yuna' berbahasa ${language}. Berikan respons yang ramah dan informatif.` 
+        },
+        ...memory,
+        { role: "user", content: message },
+      ],
+      model: "llama3-8b-8192",
+      max_tokens: 200,
+      temperature: 0.7
+    });
+
+    const aiResponse = completion.choices[0]?.message?.content || "Maaf, tidak ada respons.";
+    
+    // Menambahkan respons AI ke dalam memory pengguna
+    userMemory[userId].push({ role: "assistant", content: aiResponse });
+
+    return aiResponse;
+  } catch (error) {
+    console.error("Error AI:", error);
+    return "Maaf, terjadi kesalahan dalam memproses pesan.";
+  }
+}
+
+// Fungsi untuk menyimpan data pengguna ke file
+function saveUserData() {
+  try {
+    fs.writeFileSync('users.json', JSON.stringify(userMemory, null, 2));  // Menyimpan data dengan format yang lebih rapi
+  } catch (error) {
+    console.error("Error menyimpan data pengguna:", error);
+  }
+}
+
+// Fungsi untuk memuat data pengguna dari file
+function loadUserData() {
+  try {
+    const data = fs.readFileSync('users.json');
+    userMemory = JSON.parse(data);
+  } catch (error) {
+    userMemory = {};  // Jika gagal, inisialisasi userMemory kosong
+    console.error("Error memuat data pengguna:", error);
+  }
+}
+
+export { getGroqAIResponse, saveUserData, loadUserData, userMemory };

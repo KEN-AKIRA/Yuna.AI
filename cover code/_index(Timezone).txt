@@ -1,0 +1,250 @@
+import { useMultiFileAuthState, makeWASocket, DisconnectReason } from '@whiskeysockets/baileys';
+import Pino from 'pino';
+import dotenv from 'dotenv';
+import fs from 'fs';
+import moment from 'moment-timezone';
+import ffmpeg from 'fluent-ffmpeg'; // Mengimpor ffmpeg
+import { getGroqAIResponse, saveUserData, loadUserData, userMemory } from './groq.js'; // Mengimpor fungsi Groq
+import gtts from 'gtts'; // Mengimpor pustaka gtts
+dotenv.config();
+
+// Watermark dan gambar global
+const watermark = '© Yuna.AI By ken';
+const globalImagePath = './image.jpg'; // Path ke gambar global
+const smallImagePath = './small.jpg'; // Path ke gambar kecil
+
+// Fungsi untuk memberikan ucapan waktu
+function ucapan() {
+    const time = moment.tz('Asia/Jakarta').format('HH');
+    let res = "Selamat dinihari 🌆";
+    if (time >= 4 && time < 10) {
+        res = "Selamat pagi 🌄";
+    }
+    if (time >= 10 && time < 15) {
+        res = "Selamat siang ☀️";
+    }
+    if (time >= 15 && time < 18) {
+        res = "Selamat sore 🌇";
+    }
+    if (time >= 18) {
+        res = "Selamat malam 🌙";
+    }
+    return res;
+}
+
+// Fungsi untuk membuat suara dari teks menggunakan TTS
+async function createTTS(text, userId, socket) {
+    try {
+        const gttsInstance = new gtts(text, 'id'); // Bahasa Indonesia
+        const audioFilePath = `./audio/${userId}_response.mp3`;
+
+        // Pastikan direktori audio ada
+        if (!fs.existsSync('./audio')) {
+            fs.mkdirSync('./audio');
+        }
+
+        gttsInstance.save(audioFilePath, async function (err) {
+            if (err) {
+                console.error("Terjadi kesalahan saat membuat file audio:", err);
+                return;
+            }
+
+            console.log(`File audio disimpan di: ${audioFilePath}`);
+
+            // Cek ukuran file dan kompres jika perlu
+            await checkAndCompressAudio(audioFilePath, userId, socket);
+        });
+    } catch (error) {
+        console.error("Terjadi kesalahan saat membuat suara:", error);
+    }
+}
+
+// Fungsi untuk mengecek dan mengompresi file audio jika diperlukan
+async function checkAndCompressAudio(audioFilePath, userId, socket) {
+    try {
+        const stats = fs.statSync(audioFilePath);
+        const fileSizeInBytes = stats.size;
+        const fileSizeInMB = fileSizeInBytes / (1024 * 1024); // Ukuran dalam MB
+
+        if (fileSizeInMB > 16) { // Jika ukuran lebih dari 16MB (batas WhatsApp)
+            console.log("File audio terlalu besar, mencoba mengompresi...");
+            const compressedAudioPath = `./audio/${userId}_compressed_response.mp3`;
+
+            // Kompresi file audio menggunakan ffmpeg
+            ffmpeg(audioFilePath)
+                .audioBitrate(128)
+                .on('end', async () => {
+                    console.log("Audio berhasil dikompresi.");
+                    await sendAudioToUser(socket, userId, compressedAudioPath); // Mengirim file yang sudah dikompresi
+                    fs.unlinkSync(audioFilePath); // Hapus file asli
+                })
+                .on('error', (err) => {
+                    console.error("Terjadi kesalahan saat mengompresi audio:", err);
+                    fs.unlinkSync(audioFilePath); // Hapus file yang gagal dikompresi
+                })
+                .save(compressedAudioPath);
+        } else {
+            // Jika file tidak terlalu besar, kirimkan langsung
+            await sendAudioToUser(socket, userId, audioFilePath);
+        }
+    } catch (error) {
+        console.error("Terjadi kesalahan saat mengecek atau mengompresi audio:", error);
+    }
+}
+
+// Fungsi untuk mengirimkan file audio ke pengguna
+async function sendAudioToUser(socket, userId, audioFilePath) {
+    try {
+        // Cek apakah file audio ada
+        if (fs.existsSync(audioFilePath)) {
+            const audioBuffer = fs.readFileSync(audioFilePath);
+            console.log("Audio buffer ditemukan:", audioBuffer);
+
+            // Cek apakah buffer valid
+            if (!audioBuffer || audioBuffer.length === 0) {
+                console.log("Buffer audio kosong atau tidak valid.");
+                return;
+            }
+
+            // Kirim audio ke pengguna
+            await socket.sendMessage(userId, {
+                audio: { url: audioFilePath },
+                mimetype: 'audio/mp3', // Pastikan menggunakan mimetype yang benar
+                ptt: true, // Gunakan mode Push-to-Talk
+            });
+
+            console.log("Audio berhasil dikirim ke pengguna:", userId);
+
+            // Hapus file audio setelah dikirim
+            fs.unlinkSync(audioFilePath);
+        } else {
+            console.log("File audio tidak ditemukan:", audioFilePath);
+        }
+    } catch (error) {
+        console.error("Terjadi kesalahan saat mengirim audio:", error);
+    }
+}
+
+// Fungsi untuk mengirimkan gambar kecil bersama dengan pesan balasan AI
+async function sendImageWithAIResponse(socket, userId, aiResponse) {
+    try {
+        const imageBuffer = fs.readFileSync(smallImagePath);
+        const options = {
+            image: imageBuffer,
+            caption: aiResponse // Menggabungkan gambar dengan teks respon AI
+        };
+
+        // Kirim gambar kecil dan teks balasan ke pengguna
+        await socket.sendMessage(userId, options);
+        console.log(`Gambar kecil dan respon AI berhasil dikirim ke ${userId}`);
+    } catch (error) {
+        console.error("Terjadi kesalahan saat mengirim gambar kecil:", error);
+    }
+}
+
+// Fungsi untuk menangani pesan yang diterima dan mengirimkan respon dengan gambar kecil
+async function handleIncomingMessage(socket, userId, userMessage) {
+    try {
+        // Ambil respon dari AI (misalnya menggunakan fungsi getGroqAIResponse)
+        const aiResponse = await getGroqAIResponse(userMessage);
+
+        // Kirim gambar kecil bersama dengan respon AI
+        await sendImageWithAIResponse(socket, userId, aiResponse);
+
+        // Buat file audio dari respon AI dan kirimkan
+        await createTTS(aiResponse, userId, socket);
+    } catch (error) {
+        console.error("Terjadi kesalahan saat memproses pesan pengguna:", error);
+    }
+}
+
+// Fungsi untuk menangani pesan pertama dari pengguna
+async function handleFirstChat(socket, userId) {
+    // Jika user belum melakukan chat pertama kali
+    if (!userMemory[userId] || !userMemory[userId].firstChat) {
+        console.log("Pesan pertama terdeteksi untuk pengguna:", userId);
+
+        // Membuat pesan sambutan
+        const firstChatMessage = `${ucapan()}\n\n📮Note: Jangan spam botnya\n⏩setelah pesan ini muncul anda sudah bisa ngobrol dengan AI.`;
+        const licenseInfo = "📜 Owner:+6288237251746";
+
+        // Kirim gambar dengan pesan sambutan dan watermark
+        await sendImage(socket, userId, firstChatMessage, licenseInfo, watermark);
+
+        // Simpan data pengguna sebagai sudah pernah chat pertama kali
+        if (!userMemory[userId]) {
+            userMemory[userId] = { memory: [], name: '', firstChat: true };
+        } else {
+            userMemory[userId].firstChat = true;
+        }
+
+        // Simpan data pengguna
+        saveUserData();  // Simpan data setelah memperbarui
+
+        return;  // Hentikan eksekusi jika ini adalah pesan pertama
+    }
+}
+
+// Fungsi untuk menghubungkan ke WhatsApp dan menangani pesan
+async function connectToWhatsapp() {
+    try {
+        const { state, saveCreds } = await useMultiFileAuthState("auth");
+        const socket = makeWASocket({
+            printQRInTerminal: true,
+            browser: ["Sibay", "Firefox", "1.0.0"],
+            auth: state,
+            logger: Pino({ level: "silent" }),
+        });
+
+        socket.ev.on("creds.update", saveCreds);
+        socket.ev.on("connection.update", ({ connection, lastDisconnect }) => {
+            if (connection === "open") {
+                console.log("Koneksi WhatsApp terbuka");
+            } else if (connection === "close") {
+                console.log("Koneksi WhatsApp tertutup, mencoba menyambung kembali...");
+                const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                if (shouldReconnect) {
+                    setTimeout(connectToWhatsapp, 5000);
+                } else {
+                    console.log("Logout terdeteksi, tidak mencoba menyambung kembali.");
+                }
+            }
+        });
+
+        socket.ev.on("messages.upsert", async ({ messages, type }) => {
+            if (type === "notify") {
+                for (const message of messages) {
+                    const userId = message.key.remoteJid;
+                    let userMessage;
+
+                    // Periksa apakah pesan berupa teks atau gambar
+                    if (message.message?.conversation) {
+                        userMessage = message.message.conversation;
+                    } else if (message.message?.extendedTextMessage?.text) {
+                        userMessage = message.message.extendedTextMessage.text;
+                    } else if (message.message?.imageMessage?.caption) {
+                        userMessage = message.message.imageMessage.caption;
+                    } else {
+                        console.log("Pesan tidak valid atau tidak didukung.");
+                        return;
+                    }
+
+                    console.log(`Pesan dari pengguna (${userId}): ${userMessage}`);
+
+                    try {
+                        // Proses pesan pengguna
+                        await handleFirstChat(socket, userId); // Cek apakah pesan pertama
+                        await handleIncomingMessage(socket, userId, userMessage); // Proses pesan lainnya
+                    } catch (error) {
+                        console.error("Terjadi kesalahan saat memproses pesan:", error);
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error("Terjadi kesalahan saat menghubungkan ke WhatsApp:", error);
+    }
+}
+
+// Panggil fungsi untuk menghubungkan ke WhatsApp
+connectToWhatsapp().catch(error => console.error("Kesalahan saat menjalankan WhatsApp bot:", error));

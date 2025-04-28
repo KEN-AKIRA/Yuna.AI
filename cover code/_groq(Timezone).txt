@@ -1,0 +1,112 @@
+import Groq from 'groq-sdk';
+import dotenv from 'dotenv';
+import fs from 'fs';
+import moment from 'moment-timezone';
+import fetch from 'node-fetch';  // Untuk fetch API
+dotenv.config();
+
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY
+});
+
+let userMemory = {};
+
+// Fungsi untuk mendapatkan tahun saat ini
+function getCurrentYear() {
+    return moment().format('YYYY');
+}
+
+// Fungsi untuk mendapatkan waktu real-time dari Timezone DB
+async function getRealTimeDate() {
+  try {
+    // Menggunakan Timezone DB API untuk mendapatkan waktu saat ini
+    const response = await fetch(`http://api.timezonedb.com/v2.1/get-time-zone?key=${process.env.TIMEZONE_DB_API_KEY}&format=json&by=zone&zone=Asia/Jakarta`);
+    const data = await response.json();
+    
+    if (data.status === "OK") {
+      // Memproses dan mengembalikan tanggal dan bulan saat ini
+      const currentDate = data.formatted.split(' ')[0];  // Format YYYY-MM-DD
+      const currentMonth = currentDate.split('-')[1];  // Bulan (MM)
+      const currentYear = currentDate.split('-')[0];  // Tahun (YYYY)
+
+      const monthNames = [
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+      ];
+
+      return `Tanggal saat ini adalah ${currentDate}, bulan ${monthNames[parseInt(currentMonth) - 1]} ${currentYear}`;
+    } else {
+      throw new Error('Gagal mendapatkan waktu dari Timezone DB');
+    }
+  } catch (error) {
+    console.error('Error mendapatkan waktu:', error);
+    return "Maaf, tidak dapat mengambil waktu saat ini.";
+  }
+}
+
+// Fungsi untuk mendapatkan respons AI dari Groq
+async function getGroqAIResponse(message, userId, language = 'id') {
+  try {
+    // Pastikan userMemory[userId] adalah array
+    if (!Array.isArray(userMemory[userId])) {
+      userMemory[userId] = [];  // Jika bukan array, buat array baru
+    }
+    
+    const memory = userMemory[userId];
+    memory.push({ role: "user", content: message });
+
+    // Cek apakah pesan mengandung pertanyaan tentang tanggal atau bulan
+    if (message.toLowerCase().includes("tanggal berapa sekarang") || message.toLowerCase().includes("bulan apa sekarang")) {
+      const currentDate = await getRealTimeDate();  // Ambil waktu real-time
+      userMemory[userId].push({ role: "assistant", content: currentDate });  // Simpan ke memory
+      return currentDate;  // Kembalikan tanggal real-time langsung
+    }
+
+    // Mengirim permintaan ke Groq AI dengan menggunakan chat completions
+    const completion = await groq.chat.completions.create({
+      messages: [
+        { 
+          role: "system", 
+          content: `Kamu adalah asisten AI bernama 'Yuna' berbahasa ${language}. Berikan respons yang ramah dan informatif.` 
+        },
+        ...memory,
+        { role: "user", content: message },
+      ],
+      model: "llama-3.1-70b-versatile",
+      max_tokens: 80,
+      temperature: 0.7
+    });
+
+    const aiResponse = completion.choices[0]?.message?.content || "Maaf, tidak ada respons.";
+    
+    // Menambahkan respons AI ke dalam memory pengguna
+    userMemory[userId].push({ role: "assistant", content: aiResponse });
+
+    return aiResponse;
+  } catch (error) {
+    console.error("Error AI:", error);
+    return "Maaf, terjadi kesalahan dalam memproses pesan.";
+  }
+}
+
+// Fungsi untuk menyimpan data pengguna ke file
+function saveUserData() {
+  try {
+    fs.writeFileSync('users.json', JSON.stringify(userMemory, null, 2));  // Menyimpan data dengan format yang lebih rapi
+  } catch (error) {
+    console.error("Error menyimpan data pengguna:", error);
+  }
+}
+
+// Fungsi untuk memuat data pengguna dari file
+function loadUserData() {
+  try {
+    const data = fs.readFileSync('users.json');
+    userMemory = JSON.parse(data);
+  } catch (error) {
+    userMemory = {};  // Jika gagal, inisialisasi userMemory kosong
+    console.error("Error memuat data pengguna:", error);
+  }
+}
+
+export { getGroqAIResponse, saveUserData, loadUserData, userMemory, getCurrentYear };

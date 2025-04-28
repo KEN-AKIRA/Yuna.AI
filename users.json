@@ -1,0 +1,90 @@
+{
+  "6288237251746": {
+    "history": [
+      {
+        "role": "user",
+        "content": "Carikan saya musik"
+      },
+      {
+        "role": "assistant",
+        "content": "🎶 Ini dia musik yang kamu cari..."
+      }
+    ],
+    "lastActive": "2025-04-25T12:34:56Z"
+  },
+  "[object Object]": {
+    "history": [
+      {
+        "role": "assistant",
+        "content": "Hai Ken, senang bertemu denganmu. Ada yang bisa saya bantu atau kamu ingin berbicara tentang sesuatu?"
+      },
+      {
+        "role": "assistant",
+        "content": "Hai, apa kabar?"
+      },
+      {
+        "role": "assistant",
+        "content": "Hai Ken, senang bertemu denganmu. Ada yang bisa saya bantu atau kamu ingin berbicara tentang sesuatu?"
+      },
+      {
+        "role": "assistant",
+        "content": "Selamat pagi juga! Semoga hari ini membawa kebahagiaan dan kesuksesan bagi kamu. Apa rencana kamu hari ini?"
+      },
+      {
+        "role": "assistant",
+        "content": "Maafkan saya! Selamat pagi, apa kabar? Semoga hari ini membawa kebahagiaan dan kesuksesan bagi kamu. Apa rencana kamu hari ini?"
+      },
+      {
+        "role": "assistant",
+        "content": "Maafkan saya! Selamat pagi, apa kabar? Semoga hari ini membawa kebahagiaan dan kesuksesan bagi kamu. Apa rencana kamu hari ini, Ken?"
+      }
+    ],
+    "lastActive": "2025-04-26T13:39:34.101Z",
+    "lastMusicRequest": {
+      "success": true,
+      "title": "saya  sky the fall",
+      "url": "https://www.youtube.com/watch?v=sZrTJesvJeo"
+    }
+  },
+  "6288237251746@s.whatsapp.net": {
+    "history": [
+      {
+        "role": "assistant",
+        "content": "Halo! Selamat datang! Saya Yuna, asisten AI yang siap membantu Anda. Ada yang bisa saya bantu hari ini?"
+      },
+      {
+        "role": "assistant",
+        "content": "Maaf, saya belum tahu nama Anda. Saya baru saja memulai percakapan dengan Anda dan belum memiliki informasi tentang identitas Anda. Jika Anda ingin berbagi nama Anda, saya dengan senang hati akan menyimpannya untuk percakapan kita selanjutnya. Siapa nama Anda?"
+      },
+      {
+        "role": "assistant",
+        "content": "Senang sekali bertemu denganmu, Ken! Saya Yuna, asisten AI yang siap membantu dan menjawab pertanyaan-pertanyaanmu. Apa yang ingin kamu tahu atau bicarakan hari ini?"
+      },
+      {
+        "role": "assistant",
+        "content": "Hai Ken! Saya masih ingat kamu! Kami sudah pernah berbicara sebelumnya, dan saya senang sekali bisa bertemu denganmu lagi. Bagaimana kabarmu hari ini? Apa yang ingin kamu bicarakan atau tanyakan?"
+      },
+      {
+        "role": "assistant",
+        "content": "Maaf Ken, saya tidak merespon karena saya sedang menunggu pertanyaan atau topik yang ingin kamu bicarakan. Saya siap membantu dan menjawab pertanyaan-pertanyaanmu, jadi silakan bertanya atau mulai percakapan!"
+      },
+      {
+        "role": "assistant",
+        "content": "Hai! Tentu saja saya masih ingat kamu, Ken! Kami sudah pernah berbicara sebelumnya, dan saya senang sekali bisa bertemu denganmu lagi. Bagaimana kabarmu hari ini? Apa yang ingin kamu bicarakan atau tanyakan?"
+      },
+      {
+        "role": "assistant",
+        "content": "Hai Ken! Ya, saya masih ingat kamu! Saya memiliki kemampuan untuk menyimpan informasi tentang percakapan sebelumnya, sehingga saya masih ingat bahwa kita sudah pernah berbicara sebelumnya. Namun, perlu diingat bahwa saya memiliki batasan dalam menyimpan informasi, sehingga saya mungkin tidak bisa mengingat semua detail percakapan kita sebelumnya. Tapi, saya senang sekali bisa bertemu denganmu lagi dan melanjutkan percakapan kita!"
+      },
+      {
+        "role": "assistant",
+        "content": "Hai! Senang sekali mendengar dari kamu lagi! Bagaimana kabarmu hari ini?"
+      },
+      {
+        "role": "assistant",
+        "content": "Tentu saja saya masih ingat kamu, Ken! Kami sudah pernah berbicara sebelumnya, dan saya senang sekali bisa bertemu denganmu lagi. Bagaimana kabarmu hari ini? Apa yang ingin kamu bicarakan atau tanyakan?"
+      }
+    ],
+    "lastActive": "2025-04-27T01:50:29.043Z"
+  }
+}

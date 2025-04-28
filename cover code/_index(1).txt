@@ -1,0 +1,177 @@
+//index.js
+import { useMultiFileAuthState, makeWASocket, DisconnectReason } from '@whiskeysockets/baileys';
+import Pino from 'pino';
+import dotenv from 'dotenv';
+import fs from 'fs';
+import moment from 'moment-timezone';
+import { getGroqAIResponse, saveUserData, loadUserData, userMemory } from './groq.js';  // Mengimpor fungsi Groq
+dotenv.config();
+
+// Watermark dan gambar global
+const watermark = '© Yuna.AI By ken';
+const globalImagePath = './image.jpg'; // Path ke gambar global
+
+// Fungsi untuk memberikan ucapan waktu
+function ucapan() {
+    const time = moment.tz('Asia/Jakarta').format('HH');
+    let res = "Selamat dinihari 🌆";
+    if (time >= 4 && time < 10) {
+        res = "Selamat pagi 🌄";
+    }
+    if (time >= 10 && time < 15) {
+        res = "Selamat siang ☀️";
+    }
+    if (time >= 15 && time < 18) {
+        res = "Selamat sore 🌇";
+    }
+    if (time >= 18) {
+        res = "Selamat malam 🌙";
+    }
+    return res;
+}
+
+// Fungsi untuk menghubungkan ke WhatsApp dan menangani pesan
+async function connectToWhatsapp() {
+    try {
+        const { state, saveCreds } = await useMultiFileAuthState("auth");
+        const socket = makeWASocket({
+            printQRInTerminal: true,
+            browser: ["Sibay", "Firefox", "1.0.0"],
+            auth: state,
+            logger: Pino({ level: "silent" }),
+        });
+
+        socket.ev.on("creds.update", saveCreds);
+        socket.ev.on("connection.update", ({ connection, lastDisconnect }) => {
+            if (connection === "open") {
+                console.log("Koneksi WhatsApp terbuka");
+            } else if (connection === "close") {
+                console.log("Koneksi WhatsApp tertutup, mencoba menyambung kembali...");
+                const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                if (shouldReconnect) {
+                    setTimeout(connectToWhatsapp, 5000);
+                } else {
+                    console.log("Logout terdeteksi, tidak mencoba menyambung kembali.");
+                }
+            }
+        });
+
+        socket.ev.on("messages.upsert", async ({ messages, type }) => {
+            if (type === "notify") {
+                for (const message of messages) {
+                    const userId = message.key.remoteJid;
+                    let userMessage;
+
+                    // Periksa apakah pesan berupa teks atau gambar
+                    if (message.message?.conversation) {
+                        userMessage = message.message.conversation;
+                    } else if (message.message?.extendedTextMessage?.text) {
+                        userMessage = message.message.extendedTextMessage.text;
+                    } else if (message.message?.imageMessage?.caption) {
+                        userMessage = message.message.imageMessage.caption;
+                    } else {
+                        console.log("Pesan tidak valid atau tidak didukung.");
+                        return;
+                    }
+
+                    console.log(`Pesan dari pengguna (${userId}): ${userMessage}`);
+
+                    try {
+                        // Logika untuk memeriksa apakah ini adalah pesan pertama dari pengguna
+                        if (!userMemory[userId] || !userMemory[userId].firstChat) {
+                            console.log("Pesan pertama terdeteksi untuk pengguna:", userId);
+
+                            const firstChatMessage = `${ucapan()}\n\n📮Note: Jangan spam botnya\n⏩setelah pesan ini muncul anda sudah bisa ngobrol dengan AI.`;
+                            const licenseInfo = "📜 Owner:+6288237251746";
+
+                            // Kirim gambar dengan pesan sambutan dan watermark
+                            await sendImage(socket, userId, firstChatMessage, licenseInfo, watermark);
+
+                            // Simpan data pengguna sebagai sudah pernah chat pertama kali
+                            if (!userMemory[userId]) {
+                                userMemory[userId] = {};
+                            }
+                            userMemory[userId].firstChat = true;
+
+                            // Simpan data pengguna
+                            saveUserData();  // Simpan data setelah memperbarui
+
+                            return;
+                        }
+
+                        // Kirim pesan balasan dari AI jika ini bukan pesan pertama
+                        if (userMessage) {
+                            const aiResponse = await getGroqAIResponse(userMessage, userId);
+                            console.log(`Respons AI: ${aiResponse}`);
+
+                            // Cek apakah pesan tersebut mengutip pesan lain
+                            if (message.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
+                                // Dapatkan ID pesan yang dikutip
+                                const quotedMessageId = message.message.extendedTextMessage.contextInfo.stanzaId;
+
+                                // Kirim balasan dengan mengutip pesan
+                                await socket.sendMessage(userId, {
+                                    text: aiResponse,
+                                    quoted: {
+                                        key: {
+                                            remoteJid: userId,
+                                            fromMe: false,
+                                            id: quotedMessageId,
+                                        },
+                                        message: message.message,
+                                    },
+                                });
+                            } else {
+                                // Jika tidak ada pesan yang dikutip, kirim balasan biasa
+                                await socket.sendMessage(userId, { text: aiResponse });
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Terjadi kesalahan saat memproses pesan:", error);
+                        await socket.sendMessage(userId, { text: "Terjadi kesalahan dalam memproses pesan." });
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error("Terjadi kesalahan dalam koneksi WhatsApp:", error);
+        setTimeout(connectToWhatsapp, 5000);
+    }
+}
+
+// Fungsi untuk mengirimkan gambar
+async function sendImage(socket, userId, firstChatMessage, licenseInfo, watermark) {
+    try {
+        const globalImagePath = './image.jpg'; // Pastikan path ke gambar benar
+
+        // Memeriksa apakah file gambar ada
+        if (fs.existsSync(globalImagePath)) {
+            const imageBuffer = fs.readFileSync(globalImagePath);
+
+            // Mengirimkan gambar bersama dengan pesan sambutan dan watermark
+            await socket.sendMessage(userId, {
+                image: imageBuffer,
+                caption: `${firstChatMessage}\n\n${licenseInfo}\n\n${watermark}`,
+                mimetype: 'image/jpeg', // MIME type untuk gambar
+            });
+            console.log("Gambar berhasil dikirim!");
+        } else {
+            // Jika gambar tidak ditemukan, hanya kirim teks saja
+            console.log("Gambar tidak ditemukan, mengirimkan teks.");
+            await socket.sendMessage(userId, {
+                text: `${firstChatMessage}\n\n${licenseInfo}\n\n${watermark}`,
+            });
+        }
+    } catch (error) {
+        console.error("Terjadi kesalahan saat mengirim gambar:", error);
+    }
+}
+
+// Panggil saat memulai aplikasi
+loadUserData();
+connectToWhatsapp();
+
+// Simpan data pengguna saat aplikasi dihentikan
+process.on('exit', saveUserData);
+process.on('SIGINT', saveUserData);
+process.on('SIGTERM', saveUserData);

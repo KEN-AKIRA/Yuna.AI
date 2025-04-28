@@ -1,0 +1,98 @@
+import { useMultiFileAuthState, makeWASocket, DisconnectReason } from '@whiskeysockets/baileys';
+import Pino from 'pino';
+import dotenv from 'dotenv';
+import fs from 'fs';
+import moment from 'moment-timezone';
+import { getGroqAIResponse, loadUserData, saveUserData } from './groq.js';
+import { createTTS } from './tts.js'; // Sudah pakai Python di dalamnya
+
+
+dotenv.config();
+
+const watermark = '© Yuna.AI By ken';
+const smallImagePath = './small.jpg';
+
+function ucapan() {
+    const time = moment.tz('Asia/Jakarta').format('HH');
+    if (time >= 4 && time < 10) return "Selamat pagi";
+    if (time >= 10 && time < 15) return "Selamat siang";
+    if (time >= 15 && time < 18) return "Selamat sore";
+    if (time >= 18) return "Selamat malam";
+    return "Selamat dinihari";
+}
+
+async function sendImageWithAIResponse(socket, userId, aiResponse) {
+    try {
+        const imageBuffer = fs.readFileSync(smallImagePath);
+        await socket.sendMessage(userId, {
+            image: imageBuffer,
+            caption: aiResponse
+        });
+        console.log(`🖼️ Gambar dan respon AI dikirim ke ${userId}`);
+    } catch (error) {
+        console.error("❌ Kesalahan saat mengirim gambar:", error);
+    }
+}
+
+async function handleIncomingMessage(socket, userId, userMessage) {
+    try {
+        const aiResponse = await getGroqAIResponse(userMessage);
+
+        // Kirim gambar + teks AI dulu
+        await sendImageWithAIResponse(socket, userId, aiResponse);
+
+        // Kirim audio TTS dengan Python
+        await createTTS(aiResponse, userId, socket);
+    } catch (error) {
+        console.error("❌ Kesalahan saat proses pesan:", error);
+    }
+}
+
+async function connectToWhatsapp() {
+    try {
+        const { state, saveCreds } = await useMultiFileAuthState("auth");
+        const socket = makeWASocket({
+            printQRInTerminal: true,
+            browser: ["Yuna", "Chrome", "1.0"],
+            auth: state,
+            logger: Pino({ level: "silent" }),
+        });
+
+        socket.ev.on("creds.update", saveCreds);
+
+        socket.ev.on("connection.update", ({ connection, lastDisconnect }) => {
+            if (connection === "open") {
+                console.log("✅ Koneksi WhatsApp terbuka");
+            } else if (connection === "close") {
+                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                if (shouldReconnect) {
+                    console.log("🔄 Menyambung ulang...");
+                    setTimeout(connectToWhatsapp, 5000);
+                } else {
+                    console.log("🚪 Logout, tidak menyambung kembali.");
+                }
+            }
+        });
+
+        socket.ev.on("messages.upsert", async ({ messages, type }) => {
+            if (type === "notify") {
+                for (const message of messages) {
+                    const userId = message.key.remoteJid;
+                    const userMessage =
+                        message.message?.conversation ||
+                        message.message?.extendedTextMessage?.text ||
+                        message.message?.imageMessage?.caption;
+
+                    if (!userMessage) return;
+
+                    console.log(`📩 Pesan dari ${userId}: ${userMessage}`);
+                    await handleIncomingMessage(socket, userId, userMessage);
+                }
+            }
+        });
+    } catch (error) {
+        console.error("❌ Kesalahan saat koneksi WhatsApp:", error);
+    }
+}
+
+connectToWhatsapp().catch(err => console.error("❌ Bot error:", err));

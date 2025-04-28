@@ -1,0 +1,20 @@
+Kalau suka project ini, kasih ⭐️ di repo ya!
+
+--------------------------------------------
+
+```gitignore
+# Node modules
+node_modules/
+
+# Environment files
+.env
+
+# Session auth data
+auth/
+
+# Temporary files
+temp/
+
+# OS files
+.DS_Store
+Thumbs.db
