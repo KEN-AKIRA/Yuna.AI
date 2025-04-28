@@ -25,7 +25,7 @@ git clone https://github.com/username/bot-wa-yuna.git
 cd Yuna.Ai
 
 
-2. Install Dependency
+### 2. Install Dependency
 Pastikan kamu memiliki Node.js terpasang di sistemmu. Kemudian, jalankan perintah berikut untuk menginstal semua dependensi:
 
 bash
