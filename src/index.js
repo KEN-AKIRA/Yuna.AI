@@ -1,15 +1,28 @@
-import { useMultiFileAuthState, makeWASocket, DisconnectReason } from '@whiskeysockets/baileys';
+import { useMultiFileAuthState, makeWASocket, DisconnectReason, downloadMediaMessage } from '@whiskeysockets/baileys';
 import Pino from 'pino';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import moment from 'moment-timezone';
-import { getGroqAIResponse, loadUserData, saveUserData, getUserMemory } from './groq.js';
-// import { createTTS } from './tts-bark.js'; // Uncomment kalau mau pakai TTS
+import path, { dirname } from 'path';
+import { fileURLToPath } from 'url';
+/*import { createTTS } from './tts-bark.js'; // Uncomment kalau mau pakai TTS*/
+import { fetchGroqAI, loadUserData, saveUserData, getUserMemory } from './groq.js';
+//import { getGroqAIResponse, loadUserData, saveUserData, getUserMemory } from './groq.js';
 import { getAvatar } from './avatar.js';
 import { detectEmotion } from './emotion.js';
 import { searchYouTubeMusic, downloadYouTubeAudio } from './yutube.js';
+import { analyzeFace } from './eyes.js';
+import { spawn } from 'child_process';
+//import { startDashboard, logMessage } from './monitor.js';
+//import ffmpeg from 'fluent-ffmpeg';
+import { runAgent } from './agent.js'; // Import fungsi runAgent dari agent.js
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 dotenv.config();
+
+
 
 const watermark = '©Yuna.AI';
 
@@ -30,6 +43,24 @@ function ucapan() {
     if (time >= 18) return "Selamat malam 🌙";
     return "Selamat dinihari 🌆";
 }
+
+
+/*const io = startDashboard();
+
+function startBot() {
+  
+    logMessage("bot", "Yuna", "Halo Ken, aku siap membantu 💛", io);
+  
+startBot();
+
+}*/
+
+async function onMessageReceived(senderNumber, messageText) {
+    const userId = senderNumber.toString();  // gunakan nomor sebagai userId
+    const response = await runAgent(userId, messageText);
+    await sendMessageToWhatsApp(senderNumber, response);
+  }
+
 
 async function sendImageWithAIResponse(socket, userId, aiResponse, emotion) {
     try {
@@ -58,6 +89,9 @@ async function handleIncomingMessage(sock, userId, userMessage) {
 
         if (pendingMusicRequest[userId]) {
             const query = lowerMessage.trim();
+
+            await sock.sendMessage(userId, { text: "mau musik apa? ada judulnya?" });
+
             const songUrl = await searchYouTubeMusic(query);
 
             if (songUrl && !songUrl.includes('Tidak dapat')) {
@@ -92,15 +126,28 @@ async function handleIncomingMessage(sock, userId, userMessage) {
             return;
         }
 
-        if (lowerMessage.includes('musik') || lowerMessage.includes('lagu') || lowerMessage.includes('play') || lowerMessage.includes('dj') || lowerMessage.includes('carikan')) {
-            const query = lowerMessage.replace(/(musik|lagu|play|dj|carikan)/g, '').trim();
+        if (lowerMessage.includes('musik') || lowerMessage.includes('lagu') || lowerMessage.includes('play') || lowerMessage.includes('dj') || lowerMessage.includes('putarkan')) {
+            const query = lowerMessage.replace(/(musik|lagu|play|dj|putarkan)/g, '').trim();
 
-            if (!query || query.length === 3) {
+            if (!query || query.length <= 3) {
                 pendingMusicRequest[userId] = true;
                 await sock.sendMessage(userId, { text: "Mau putar musik apa? 🎵" });
                 return;
             } else {
-                const songUrl = await searchYouTubeMusic(query);
+                const loadingMessages = [
+                    "🎶 Lagi aku cari lagunya buat kamu, tunggu ya...",
+                    "⏳ Tunggu sebentar ya, aku siapin dulu musiknya...",
+                    "🎵 Sebentar ya... aku cari lagu  yang terbaik buatmu."
+                  ];
+                  const waitText = loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
+                  await sock.sendMessage(userId, { text: waitText });
+              
+                //await sock.sendMessage(userId, { text: "⏳ Lagi cari dan siapkan lagunya, sebentar ya..." });
+                //const songUrl = await searchYouTubeMusic(query);
+                const songData = await searchYouTubeMusic(query);
+                const songUrl = songData.url;
+                const songTitle = songData.title || "Tidak diketahui";
+                const songArtist = songData.artist || "Tidak diketahui";
 
                 if (songUrl && !songUrl.includes('Tidak dapat')) {
                     const audioFilePath = `./temp/${userId}_music.mp3`;
@@ -112,6 +159,8 @@ async function handleIncomingMessage(sock, userId, userMessage) {
                         mimetype: 'audio/mp4',
                         ptt: true
                     });
+
+                    await sock.sendMessage(userId, { text: `Music Information:\n*Title:* ${songTitle}\n*Artis:* ${songArtist}` });
 
                     console.log(`🎵 Musik berhasil dikirim ke ${userId}: ${query}`);
 
@@ -139,17 +188,19 @@ async function handleIncomingMessage(sock, userId, userMessage) {
         console.error('❌ Error di handleIncomingMessage:', error);
     }
 }
-
-async function handleAIResponse(sock, userId, userMessage) {
+// fungsi response true 
+/*async function handleAIResponse(sock, userId, userMessage) {
     try {
         let userData = getUserMemory(userId);
-        const aiResponse = await getGroqAIResponse(userMessage, userId);
-
+        const aiResponse = await fetchGroqAI(userMessage, userId);
+        //getGroqAIResponse
         userData.history.push({ role: 'user', content: userMessage });
         userData.history.push({ role: 'assistant', content: aiResponse });
         saveUserData();
 
-        const fullResponse = `${ucapan()}!\n\n${aiResponse}\n\n${watermark}`;
+        const githubLink = "🔗bit.ly/KenAkira";
+
+        const fullResponse = `${ucapan()}!\n\n${aiResponse}\n\n${watermark}\n${githubLink}`;        
         const emotion = detectEmotion(aiResponse);
 
         await sendImageWithAIResponse(sock, userId, fullResponse, emotion);
@@ -160,7 +211,290 @@ async function handleAIResponse(sock, userId, userMessage) {
     } catch (error) {
         console.error("❌ Error di handleAIResponse:", error);
     }
-}
+}*/
+
+/*export async function createTTS(responseText, userId, sock) {
+    try {
+      const audioPath = await generateTTS(responseText); // Dapatkan file .ogg langsung
+      const audioFile = fs.readFileSync(audioPath);      // Baca file .ogg
+  
+      // Kirim ke WhatsApp langsung
+      await sock.sendMessage(userId, {
+        audio: audioFile,
+        mimetype: 'audio/ogg; codecs=opus', // <- penting: ogg
+        ptt: true
+      });
+  
+      console.log('✅ TTS berhasil dikirim.');
+    } catch (error) {
+      console.error('❌ Error saat membuat TTS:', error);
+    }
+  }*/
+    //fitur automatic plac musik pashe 1
+    /*async function handleAIResponse(sock, userId, userMessage) {
+        try {
+            let userData = getUserMemory(userId);
+            const aiResponse = await fetchGroqAI(userMessage, userId);
+    
+            userData.history.push({ role: 'user', content: userMessage });
+            userData.history.push({ role: 'assistant', content: aiResponse });
+            saveUserData();
+    
+            const githubLink = "🔗bit.ly/KenAkira";
+            const fullResponse = `${ucapan()}!\n\n${aiResponse}\n\n${watermark}\n${githubLink}`;
+            const emotion = detectEmotion(aiResponse);
+    
+            await sendImageWithAIResponse(sock, userId, fullResponse, emotion);
+    
+            console.log(`🧠 Emosi: ${emotion}`);
+    
+            // Deteksi tag PUTAR MUSIK otomatis dari AI response
+            const match = aiResponse.match(/\[PUTAR MUSIK: (.+?)\]/i);
+            if (match) {
+                const mood = match[1].trim().toLowerCase();
+                console.log(`🎧 AI meminta putar musik dengan mood: ${mood}`);
+    
+                const loadingText = [
+                    "🎶 Oke, aku cari lagu yang pas buat mood itu ya...",
+                    "🔎 Nyari musik dulu, tungguin sebentar ya...",
+                    "🎧 Deteksi mood... Cari playlist..."
+                ];
+                await sock.sendMessage(userId, {
+                    text: loadingText[Math.floor(Math.random() * loadingText.length)]
+                });
+    
+                function mapMoodToMusicQuery(mood) {
+                    const moodMap = {
+                        'galau': 'lagu galau sedih barat terbaik',
+                        'sedih': 'heartbreak, emotional song, breakup song, lonely song',
+                        'senang': 'dj',
+                        'semangat': 'lagu semangat pagi motivasi upbeat',
+                        'cinta': 'lagu romantis cinta barat terbaik',
+                        'malam': 'lagu malam tenang chill vibes',
+                        'sendiri': 'lagu kesepian mellow acoustic',
+                        'nostalgia': 'lagu nostalgia indonesia tahun 2000an',
+                        'rindu': 'lagu rindu akustik mellow',
+                        'santai': 'lagu santai sore chill relax',
+                        'kangen': 'lagu kangen band mellow galau'
+                    };
+    
+                    return moodMap[mood] || `lagu ${mood} populer`;
+                }
+    
+                const musicQuery = mapMoodToMusicQuery(mood);
+                console.log(`🔍 Query YouTube untuk mood "${mood}": ${musicQuery}`);
+    
+                const songData = await searchYouTubeMusic(musicQuery);
+                console.log(`🎵 Data hasil pencarian YouTube:`, songData);
+
+                let songUrl, songTitle, songArtist;
+
+           /*if (songData && songData.length > 0) {
+                const songUrl = songData[0].url;
+                const songTitle = songData[0].title || "Tidak diketahui";
+                const songArtist = songData[0].artist || "Tidak diketahui";
+               /* const songUrl = songData?.url;
+                const songTitle = songData?.title || "Tidak diketahui";
+                const songArtist = songData?.artist || "Tidak diketahui";*/
+           /* }
+                if (songUrl && songUrl.startsWith('http')) {
+                    const audioFilePath = `./temp/${userId}_auto_music.mp3`;
+                    console.log(`⬇️ Mulai download ke: ${audioFilePath}`);
+    
+                    try {
+                        await downloadYouTubeAudio(songUrl, audioFilePath);
+                        console.log(`📁 Download selesai`);
+    
+                        await sock.sendMessage(userId, {
+                            audio: { url: audioFilePath },
+                            mimetype: 'audio/mp4',
+                            ptt: true
+                        });
+    
+                        await sock.sendMessage(userId, {
+                            text: `🎼 Musik yang cocok untukmu:\n*Judul:* ${songTitle}`
+                        });
+    
+                        fs.unlink(audioFilePath, (err) => {
+                            if (err) console.error('Gagal hapus file:', err);
+                            else console.log(`🗑️ File sementara dihapus: ${audioFilePath}`);
+                        });
+                    } catch (err) {
+                        console.error("❌ Gagal download audio:", err);
+                        await sock.sendMessage(userId, {
+                            text: `🚫 Maaf, gagal memutar musik. Mungkin ada masalah dengan pengunduhan audio.`
+                        });
+                    }
+                } else {
+                    console.error(`❌ Gagal dapat URL lagu dari query: ${musicQuery}`);
+                    await sock.sendMessage(userId, {
+                        text: `😔 Maaf, aku gak nemu musik untuk mood: "${mood}"`
+                    });
+                }
+            }
+    
+        } catch (error) {
+            console.error("❌ Error di handleAIResponse:", error);
+        }
+    }*/
+        async function playMusicForMood(sock, userId, mood) {
+            const queryMap = {
+              sedih: "lonely sad song, cry sad song, heartbreak song",
+              galau: "heartbreak sad song, cry sad song, lonely song",
+              semangat: "dj ",
+              cinta: "lagu cinta romantis",
+              santai: "lagu santai sore",
+              senang: "lagu bahagia",
+              rindu: "lagu rindu mellow",
+              nostalgia: "lagu nostalgia indonesia"
+            };
+          
+            const musicQuery = queryMap[mood] || `lagu ${mood}`;
+            const songData = await searchYouTubeMusic(musicQuery);
+            if (!songData || songData.length === 0) {
+              return await sock.sendMessage(userId, {
+                text: `😔 Maaf, aku gak nemu musik untuk mood: "${mood}"`
+              });
+            }
+          
+            const song = songData[0];
+            const audioFilePath = `./temp/${userId}_auto_music.mp3`;
+            try {
+              await downloadYouTubeAudio(song.url, audioFilePath);
+              await sock.sendMessage(userId, {
+                audio: { url: audioFilePath },
+                mimetype: 'audio/mp4',
+                ptt: true
+              });
+              await sock.sendMessage(userId, {
+                text: `🎼 *${song.title}* oleh *${song.artist || "Tidak diketahui"}*`
+              });
+              fs.unlink(audioFilePath, () => {});
+            } catch (err) {
+              console.error("❌ Gagal putar lagu:", err);
+              await sock.sendMessage(userId, {
+                text: `🚫 Maaf, gagal memutar lagu kali ini.`
+              });
+            }
+          }
+          
+          async function handleAIResponse(sock, userId, userMessage) {
+            try {
+              console.log("📩 Pesan dari pengguna:", userMessage);
+              let userData = getUserMemory(userId);
+          
+              // 🔁 Jika user sebelumnya ditawari musik dan sekarang bilang "iya", putar lagu
+              if (userData.pendingMusicMood && /^(iya|boleh|putar|oke|ya|silakan|gas|lanjut)$/i.test(userMessage.trim())) {
+                const mood = userData.pendingMusicMood;
+                userData.pendingMusicMood = null;
+                saveUserData();
+          
+                await sock.sendMessage(userId, { text: "🎶 Oke, aku putarkan musik untuk kamu ya..." });
+                return await playMusicForMood(sock, userId, mood);
+              }
+          
+              // 🧠 Dapatkan respons AI dari Groq
+              const aiResponse = await fetchGroqAI(userMessage, userId);
+          
+              userData.history.push({ role: 'user', content: userMessage });
+              userData.history.push({ role: 'assistant', content: aiResponse });
+              saveUserData();
+          
+              const fullResponse = `${ucapan()}!\n\n${aiResponse}\n\n${watermark}\n🔗bit.ly/KenAkira`;
+              const emotion = detectEmotion(aiResponse);
+          
+              await sendImageWithAIResponse(sock, userId, fullResponse, emotion);
+              console.log(`🧠 Emosi: ${emotion}`);
+          
+              const tagMatch = aiResponse.match(/#play-music\((.*?)\)/i);
+                if (tagMatch) {
+                const moodFromTag = tagMatch[1];
+                return await playMusicForMood(sock, userId, moodFromTag);
+                }
+
+                const offerMusic = /putarkan lagu|aku putar(kan)? musik|lagu yang cocok|dengerin lagu|coba lagu/i.test(aiResponse);
+
+                const autoPlayEmotions = ['sedih', 'galau', 'rindu'];
+
+                if (offerMusic) {
+                if (autoPlayEmotions.includes(emotion)) {
+                    await sock.sendMessage(userId, { text: "🎶 Aku ngerti... aku putarkan lagu yang cocok ya..." });
+                    return await playMusicForMood(sock, userId, emotion);
+                } else {
+                    userData.pendingMusicMood = emotion;
+                    saveUserData();
+                    await sock.sendMessage(userId, { text: "🎶 Mau aku putarkan lagu yang cocok buat mood kamu?" });
+                }
+                }
+
+            } catch (error) {
+              console.error("❌ Error di handleAIResponse:", error);
+            }
+          }
+          
+
+async function handleImageMessage(m, sock) {
+    const buffer = await downloadMediaMessage(
+      m, 
+      'buffer', 
+      {}, 
+      { 
+        reuploadRequest: sock.updateMediaMessage 
+      }
+    );
+
+    const filename = `./downloads/${Date.now()}.jpg`;
+    fs.writeFileSync(filename, buffer);
+
+    console.log('✅ Gambar berhasil disimpan di:', filename);
+
+    // Kirim ke Python untuk analisa
+    const py = spawn('python', ['analyze.py', filename]);
+
+    py.stdout.on('data', (data) => {
+        const text = data.toString().trim();
+        console.log("📦 Output dari Python:", text);
+      
+        // Cek apakah output valid JSON
+        if (text.startsWith("{")) {
+          try {
+            const result = JSON.parse(text);
+            console.log("✅ Hasil dari Python:", result);
+      
+            // Kirim ke user WhatsApp sesuai hasil (misalnya result.emotion, dsb.)
+            const response = `🧠 Analisis wajah berhasil:\n\n` +
+              `😐 Emosi: ${result.emotion}\n` +
+              `👶 Umur: ${result.age}\n` +
+              `🧔 Gender: ${result.gender}\n` +
+              `🌍 Ras: ${result.race}`;
+      
+            sock.sendMessage(m.key.remoteJid, { text: response });
+          } catch (err) {
+            console.error("❌ Gagal mem-parsing hasil JSON dari Python:", err.message);
+            sock.sendMessage(m.key.remoteJid, { text: "⚠️ Terjadi kesalahan saat memproses gambar." });
+          }
+      
+        } else {
+          // Output bukan JSON, biasanya info download model atau log dari TensorFlow
+          console.warn("📄 Output log dari Python:", text);
+      
+          // Kalau kamu mau info ini juga dikirim ke WhatsApp (opsional)
+          if (text.includes("will be downloaded")) {
+            const cleanText = text.replace(/\d{2}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} - /, "");
+            sock.sendMessage(m.key.remoteJid, { text: `🔄 ${cleanText}` });
+          }
+        }
+    });
+
+    py.stderr.on('data', (data) => {
+        console.error(`🐍 Python error: ${data.toString()}`);
+    });
+
+    py.on('close', (code) => {
+        console.log(`🚪 Python process keluar dengan kode ${code}`);
+   
+    });
+}    
 
 async function connectToWhatsapp() {
     try {
@@ -189,21 +523,42 @@ async function connectToWhatsapp() {
         });
 
         socket.ev.on("messages.upsert", async ({ messages, type }) => {
-            if (type === "notify") {
-                for (const message of messages) {
-                    const userId = message.key.remoteJid;
-                    const userMessage =
-                        message.message?.conversation ||
-                        message.message?.extendedTextMessage?.text ||
-                        message.message?.imageMessage?.caption;
+            if (type !== "notify") return;
+        
+            const msg = messages[0];
+            const sender = msg.key.remoteJid;
 
-                    if (!userMessage) return;
-
-                    console.log(`📩 Pesan dari ${userId}: ${userMessage}`);
-                    await handleIncomingMessage(socket, userId, userMessage);
+        
+            /*console.log("=== DEBUG FULL MESSAGE ===");
+            console.log(JSON.stringify(msg, null, 2));
+            console.log("===========================");*/
+        
+            const isImage = msg.message?.imageMessage;
+        
+            if (isImage) {
+                try {
+                    
+                    await handleImageMessage(msg, socket);
+                    console.log(`📸 Gambar diterima dan dianalisis dari ${sender}`);
+                } catch (error) {
+                    console.error("❌ Gagal memproses gambar:", error);
                 }
+        
+            } else {
+                const userMessage =
+                    msg.message?.conversation ||
+                    msg.message?.extendedTextMessage?.text ||
+                    msg.message?.imageMessage?.caption;
+        
+                if (!userMessage) return;
+        
+                console.log(`📩 Pesan dari ${sender}: ${userMessage}`);
+               // const response = await getGroqAIResponse(pesanUser, userId, io); //kode false
+                await handleIncomingMessage(socket, sender, userMessage);
             }
+            
         });
+        
     } catch (error) {
         console.error("❌ Kesalahan saat koneksi WhatsApp:", error);
     }
